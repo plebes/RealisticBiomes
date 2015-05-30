@@ -187,75 +187,92 @@ public class GrowthConfig extends BaseConfig {
 	// given a block (a location), find the growth rate using these rules
 	@Override
 	public double getRate(Block block) {
+		// ************ BASE WEIGHT *****************
 		// rate = baseRate * sunlightLevel * biome * (1.0 + soilBonus)
-		double rate = baseRate;
+		double baseWeight = baseRate;
+		
+		// ************ PERSISTENT WEIGHT *************
 		// if persistent, the growth rate is measured in growth/second
+		double persistentWeight = 1.0;
 		if (isPersistent) {
-			rate = 1.0 / (persistentRate * SEC_PER_HOUR);
+			persistentWeight = 1.0 / (persistentRate * SEC_PER_HOUR);
 		}
 		
-		// Find the biome multiplier
-		Double biomeMultiplier = biomeMultipliers.get(block.getBiome());
 		
-		// If the Biome is not found, return a rate of 0.0
-		if (biomeMultiplier == null) {
-			LOG.warning("biome not found. getRate() returning 0.0");
-			return 0.0;
+		// ************ BIOME WEIGHT ******************
+		double biomeWeight = 1.0;
+		if (!isGreenhouseEnabled || !greenhouseIgnoreBiome) 
+		{
+			// Find the biome multiplier
+			Double biomeMultiplier = biomeMultipliers.get(block.getBiome());
+		
+			// If the Biome is not found, return a rate of 0.0
+			if (biomeMultiplier == null) {
+				LOG.warning("biome not found. getRate() returning 0.0");
+				biomeWeight = 0.0;
+			} else {
+				// set the biome weight
+				biomeWeight = biomeMultiplier.floatValue();
+			}
 		}
 		
-		double environmentMultiplier = biomeMultiplier.floatValue();
+		// Check if we can exit early
+		// This will often be the case because most crops are limited
+		// to one or two biomes in the configuration.
+		if (biomeWeight == 0.0) return 0.0;
 		
-		// if the greenhouse effect does not ignore biome, fold the biome rate into the main rate directly
-		if (!greenhouseIgnoreBiome) {
-			rate *= environmentMultiplier;
-			environmentMultiplier = 1.0;
-		}
 		
+
+		// ********** LIGHT WEIGHT **************
+		double sunlightFactor = 1.0;
 		// modulate the rate by the amount of sunlight recieved by this plant
-		int sunlightIntensity = block.getLightFromSky();
 		if (needsSunlight) {
-			environmentMultiplier *= Math.pow((sunlightIntensity / MAX_LIGHT_INTENSITY), 3.0);
-		}
-		// apply multiplier if the sunlight is not at maximum
-		if (sunlightIntensity < MAX_LIGHT_INTENSITY) {
-			environmentMultiplier *= notFullSunlightMultiplier;
-		}
+			int sunlightIntensity = block.getLightFromSky();
+			sunlightFactor = Math.pow((sunlightIntensity / MAX_LIGHT_INTENSITY), 3.0);
 		
-		// if the crop block if fully lit, and the greenhouse rate would be an improvement
+			// apply multiplier if the sunlight is not at maximum
+			if (sunlightIntensity < MAX_LIGHT_INTENSITY) {
+				sunlightFactor *= notFullSunlightMultiplier;
+			}
+		}
+		double lightWeight = sunlightFactor;
+		
+		// if the crop block is fully lit, and the greenhouse rate would be an improvement
 		// over the current environment multiplier, then use the green house rate as the
 		// environment multiplier.
-		if(isGreenhouseEnabled && ( environmentMultiplier < greenhouseRate ) && ( block.getLightFromBlocks() == (MAX_LIGHT_INTENSITY - 1) ) ) {
+		if(isGreenhouseEnabled && ( sunlightFactor < greenhouseRate ) && ( block.getLightFromBlocks() == (MAX_LIGHT_INTENSITY - 1) ) ) {
 			// make sure it's a glowstone/lamp
 			for( Vector vec : adjacentBlocks ) {
 				Material mat = block.getLocation().add(vec).getBlock().getType();
 				if( mat == Material.GLOWSTONE || mat == Material.REDSTONE_LAMP_ON ) {
-					environmentMultiplier = greenhouseRate;
+					// Override the sunlightFactor in favor of the better glowstone one
+					lightWeight = greenhouseRate;
 					break;
 				}
 			}
 		}
 		
-		rate *= environmentMultiplier;
 		
+		// *********** WATER WEIGHT ************		
 		// if the plant will be effected by irrigation, check if the block is at the correct level and
 		// check if nearby blocks are water blocks in river biomes
+		double waterWeight = notIrrigatedMultiplier;
 		if (notIrrigatedMultiplier != 1.0) {
 			// determine if the block is near a water block in a river biome
-			boolean irrigated = false;
 			for( Vector vec : waterCheckBlocks ) {
 				Block waterBlock = block.getLocation().add(vec).getBlock();
 				Material mat = waterBlock.getType();
 				Biome biome = waterBlock.getBiome();
 				if((biome == Biome.RIVER || biome == Biome.FROZEN_RIVER) && (mat == Material.STATIONARY_WATER || mat == Material.WATER)) {
-					irrigated = true;
+					// override the default
+					waterWeight = 1.0;
 					break;
 				}
 			}
-			
-			if (!irrigated)
-				rate *= notIrrigatedMultiplier;
 		}
 		
+		
+		// *********** SOIL WEIGHT ****************
 		// check the depth of the required 'soil' and add a bonus
 		float soilBonus = 0.0f;
 		Block newBlock = block.getRelative(0,-soilLayerOffset,0);	
@@ -270,7 +287,16 @@ public class GrowthConfig extends BaseConfig {
 			newBlock = newBlock.getRelative(0, -1, 0);
 			soilCount++;
 		}
-		rate *= (1.0 + soilBonus);
+		double soilWeight = (1.0 + soilBonus);
+		
+		
+		// Calculate the rate
+		double rate = baseWeight;
+		rate *= persistentWeight;
+		rate *= biomeWeight;
+		rate *= lightWeight;
+		rate *= waterWeight;
+		rate *= soilWeight;
 		
 		return rate;
 	}
