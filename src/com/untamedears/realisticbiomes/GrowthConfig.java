@@ -194,15 +194,12 @@ public class GrowthConfig extends BaseConfig {
 			rate = 1.0 / (persistentRate * SEC_PER_HOUR);
 		}
 		
-		double environmentMultiplier = 1.0;
-		
 		// biome multiplier
 		Double biomeMultiplier = biomeMultipliers.get(block.getBiome());
-		if (biomeMultiplier != null) {
-			environmentMultiplier *= biomeMultiplier.floatValue();
-		} else {
-			return 0.0; // if the biome cannot be found, assume zero
-		}
+		// If the Biome is not found, return a rate of 0.0
+		if (biomeMultiplier == null) return 0.0;
+		
+		double environmentMultiplier = biomeMultiplier.floatValue();
 		
 		// if the greenhouse effect does not ignore biome, fold the biome rate into the main rate directly
 		if (!greenhouseIgnoreBiome) {
