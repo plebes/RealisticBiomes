@@ -194,10 +194,14 @@ public class GrowthConfig extends BaseConfig {
 			rate = 1.0 / (persistentRate * SEC_PER_HOUR);
 		}
 		
-		// biome multiplier
+		// Find the biome multiplier
 		Double biomeMultiplier = biomeMultipliers.get(block.getBiome());
+		
 		// If the Biome is not found, return a rate of 0.0
-		if (biomeMultiplier == null) return 0.0;
+		if (biomeMultiplier == null) {
+			LOG.warning("biome not found. getRate() returning 0.0");
+			return 0.0;
+		}
 		
 		double environmentMultiplier = biomeMultiplier.floatValue();
 		
