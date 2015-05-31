@@ -195,7 +195,7 @@ public class GrowthConfig extends BaseConfig {
 		// if persistent, the growth rate is measured in growth/second
 		double persistentWeight = 1.0;
 		if (isPersistent) {
-			persistentWeight = 1.0 / (persistentRate * SEC_PER_HOUR);
+			persistentWeight /= (persistentRate * SEC_PER_HOUR);
 		}
 		
 		
